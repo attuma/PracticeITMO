@@ -19,6 +19,7 @@ def extract_data(pdf):
             'num': i + 1,
             'width': float(page.width),
             'height': float(page.height),
+            'text': text,  # ИСПРАВЛЕНО: Добавлено поле text для чекера
             'words': words
         }
 

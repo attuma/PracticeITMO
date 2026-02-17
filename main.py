@@ -6,7 +6,8 @@ import checker
 
 def main():
     if len(sys.argv) < 2:
-        return
+        print("Использование: python main.py <путь_к_файлу.pdf>")
+        sys.exit(1)
 
     path = sys.argv[1]
 
@@ -18,15 +19,16 @@ def main():
         total = sum(len(errs) for errs in results.values())
 
         if total == 0:
-            print("OK")
+            print("OK: Ошибок не найдено")
         else:
-            print(f"Errors: {total}")
+            print(f"Найдено ошибок: {total}")
             for k, v in results.items():
                 if v:
-                    print(f"{k}: {v}")
-
+                    print(f"[{k.upper()}]:")
+                    for e in v:
+                        print(f"  - {e}")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Ошибка: {e}")
         sys.exit(1)
 
 
