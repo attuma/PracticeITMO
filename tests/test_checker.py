@@ -1,37 +1,35 @@
 import unittest
-
 import checker
+import config
 
 
-class CheckerFunctionsTests(unittest.TestCase):
+class CheckerTests(unittest.TestCase):
+
     def test_check_figures_reports_numbering_gap(self):
         data = {
-            "text": "Рисунок 1\nРисунок 3",
-            "images": [{"page": 1}, {"page": 1}],
+            "full_text": "Рисунок 1\nРисунок 3",
+            "images_count": 2
         }
 
-        errors = checker.check_figures(data)
+        errors = checker.check_figures_numbering(data)
 
         self.assertEqual(len(errors), 1)
-        self.assertIn("Рисунок 3: нарушена нумерация (ожидается 2)", errors[0])
+        self.assertIn("Нарушена нумерация рисунков: 3 вместо 2", errors[0])
 
     def test_check_fig_refs_returns_empty_when_all_numbers_found(self):
         data = {
-            "text": "Рисунок 1\nРисунок 2\nВ тексте есть ссылка только на рис. 1",
+            "full_text": "Рисунок 1\nРисунок 2\nВ тексте есть ссылка только на рис. 1 и рис. 2",
         }
 
         errors = checker.check_fig_refs(data)
-
         self.assertEqual(errors, [])
 
-    def test_check_ref_order_reports_out_of_order_references(self):
+    def test_check_fig_refs_reports_missing_ref(self):
         data = {
-            "text": "Сначала [3], потом [1], затем [2]",
+            "full_text": "Рисунок 1\nТекст без ссылок",
         }
-
-        errors = checker.check_ref_order(data)
-
-        self.assertEqual(errors, ["Ссылка [1] идет после [3]: нарушен порядок"])
+        errors = checker.check_fig_refs(data)
+        self.assertIn("Нет ссылки на рисунок 1", errors[0])
 
     def test_check_lists_reports_missing_space_after_marker(self):
         data = {
@@ -46,62 +44,30 @@ class CheckerFunctionsTests(unittest.TestCase):
         errors = checker.check_lists(data)
 
         self.assertEqual(len(errors), 2)
-        self.assertIn("нет пробела после маркера списка '-'", errors[0])
-        self.assertIn("нет пробела после маркера списка '•'", errors[1])
+        self.assertIn("нет пробела после маркера '-'", errors[0])
+        self.assertIn("нет пробела после маркера '•'", errors[1])
 
-    def test_check_tables_reports_caption_and_object_count_mismatch(self):
+    def test_check_tables_reports_numbering_gap(self):
         data = {
-            "text": "Таблица 1",
-            "tables": [
-                {"page": 1, "bbox": (0, 0, 100, 100)},
-                {"page": 1, "bbox": (0, 0, 100, 100)},
-            ],
-            "pages": [{"num": 1, "height": 500}],
+            "full_text": "Таблица 1\nТаблица 4",
+            "tables_bboxes": []
         }
 
-        errors = checker.check_tables(data)
+        errors = checker.check_tables_layout(data)
 
-        self.assertEqual(errors, ["Количество подписей таблиц (1) != количество таблиц (2)"])
+        self.assertIn("Нарушена нумерация таблиц: 4 вместо 2", errors[0])
 
-    def test_check_indent_returns_empty_for_short_or_lowercase_paragraphs(self):
+    def test_run_all_returns_correct_keys(self):
         data = {
-            "pages": [
-                {
-                    "num": 1,
-                    "words": [
-                        {"top": 10, "x0": 20, "text": "короткий"},
-                        {"top": 20, "x0": 60, "text": "текст"},
-                    ]
-                }
-            ]
-        }
-
-        errors = checker.check_indent(data)
-
-        self.assertEqual(errors, [])
-
-    def test_run_all_returns_all_sections(self):
-        data = {
-            "pages": [
-                {
-                    "num": 1,
-                    "width": 300,
-                    "height": 500,
-                    "words": [{"x0": 10, "x1": 20, "top": 10, "bottom": 20, "text": "Текст"}],
-                    "text": "",
-                }
-            ],
-            "text": "",
-            "images": [],
-            "tables": [],
+            "pages": [],
+            "full_text": "",
+            "tables_bboxes": []
         }
 
         results = checker.run_all(data)
 
-        self.assertEqual(
-            set(results.keys()),
-            {"margins", "figures", "fig_refs", "ref_order", "tables", "lists", "indent"},
-        )
+        expected_keys = {"margins", "figures", "fig_refs", "tables", "lists"}
+        self.assertEqual(set(results.keys()), expected_keys)
 
 
 if __name__ == "__main__":

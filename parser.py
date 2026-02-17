@@ -1,6 +1,7 @@
 import re
 import config
 
+
 def extract_data(pdf):
     data = {
         'pages': [],
@@ -33,6 +34,7 @@ def extract_data(pdf):
 
     return data
 
+
 def find_figures_in_text(text):
     matches = re.finditer(config.FIG_PATTERN, text)
     nums = []
@@ -42,15 +44,21 @@ def find_figures_in_text(text):
             nums.append(int(parts[1]))
     return nums
 
+
 def find_fig_refs(text):
     matches = re.finditer(config.FIG_REF_PATTERN, text, re.IGNORECASE)
     refs = []
     for m in matches:
+        start_pos = m.start()
+        if start_pos == 0 or text[start_pos - 1] == '\n':
+            continue
+
         txt = m.group(0)
         num = re.search(r'\d+', txt)
         if num:
             refs.append(int(num.group(0)))
     return refs
+
 
 def find_tables_in_text(text):
     matches = re.finditer(config.TABLE_PATTERN, text)
