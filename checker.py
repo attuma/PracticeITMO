@@ -3,93 +3,83 @@ import parser
 
 
 def check_margins(data):
-    margins = parser.get_margins(data)
     errors = []
-    tol = 5 * config.MM
+    tol_pts = config.TOLERANCE_MM * config.POINTS_PER_MM
 
-    for m in margins:
-        if abs(m['left'] - config.MARGIN_LEFT * config.MM) > tol:
-            errors.append(f"Стр {m['page']}: левое поле {m['left'] / config.MM:.1f}мм (норма {config.MARGIN_LEFT}мм)")
+    for page in data['pages']:
+        words = page['words']
+        if not words:
+            continue
 
-        if abs(m['right'] - config.MARGIN_RIGHT * config.MM) > tol:
-            errors.append(
-                f"Стр {m['page']}: правое поле {m['right'] / config.MM:.1f}мм (норма {config.MARGIN_RIGHT}мм)")
+        page_h = page['height']
+        content_words = [w for w in words if 0.05 * page_h < w['top'] < 0.95 * page_h]
 
-        if abs(m['top'] - config.MARGIN_TOP * config.MM) > tol:
-            errors.append(f"Стр {m['page']}: верхнее поле {m['top'] / config.MM:.1f}мм (норма {config.MARGIN_TOP}мм)")
+        if not content_words:
+            continue
 
-        if abs(m['bottom'] - config.MARGIN_BOTTOM * config.MM) > tol:
-            errors.append(
-                f"Стр {m['page']}: нижнее поле {m['bottom'] / config.MM:.1f}мм (норма {config.MARGIN_BOTTOM}мм)")
+        min_x = min(w['x0'] for w in content_words)
+        max_x = max(w['x1'] for w in content_words)
+        min_y = min(w['top'] for w in content_words)
+        max_y = max(w['bottom'] for w in content_words)
+
+        left_mm = min_x / config.POINTS_PER_MM
+        right_mm = (page['width'] - max_x) / config.POINTS_PER_MM
+        top_mm = min_y / config.POINTS_PER_MM
+        bottom_mm = (page['height'] - max_y) / config.POINTS_PER_MM
+
+        if abs(left_mm - config.MARGIN_LEFT) > config.TOLERANCE_MM:
+            errors.append(f"Стр {page['num']}: левое поле {left_mm:.1f}мм")
+
+        if abs(right_mm - config.MARGIN_RIGHT) > config.TOLERANCE_MM:
+            errors.append(f"Стр {page['num']}: правое поле {right_mm:.1f}мм")
+
+        if top_mm < config.MARGIN_TOP - config.TOLERANCE_MM:
+            errors.append(f"Стр {page['num']}: верхнее поле {top_mm:.1f}мм")
+
+        if bottom_mm < config.MARGIN_BOTTOM - config.TOLERANCE_MM:
+            errors.append(f"Стр {page['num']}: нижнее поле {bottom_mm:.1f}мм")
 
     return errors
 
 
-def check_figures(data):
+def check_figures_numbering(data):
     errors = []
-    text = data['text']
-
-    figs = parser.find_figures(text)
-    imgs = data['images']
-
-    if len(figs) != len(imgs):
-        pass
+    figs = parser.find_figures_in_text(data['full_text'])
 
     for i, num in enumerate(figs):
         if num != i + 1:
-            errors.append(f"Рисунок {num}: нарушена нумерация (ожидается {i + 1})")
+            errors.append(f"Нарушена нумерация рисунков: {num} вместо {i + 1}")
+            break
 
     return errors
 
 
 def check_fig_refs(data):
     errors = []
-    text = data['text']
-
-    figs = set(parser.find_figures(text))
-    refs = set(parser.find_fig_refs(text))
+    figs = set(parser.find_figures_in_text(data['full_text']))
+    refs = set(parser.find_fig_refs(data['full_text']))
 
     missing = figs - refs
     for num in missing:
-        errors.append(f"Рисунок {num}: нет ссылки в тексте")
+        errors.append(f"Нет ссылки на рисунок {num}")
 
     return errors
 
 
-def check_ref_order(data):
+def check_tables_layout(data):
     errors = []
-    text = data['text']
+    tbl_nums = parser.find_tables_in_text(data['full_text'])
 
-    refs = parser.find_refs(text)
+    for i, num in enumerate(tbl_nums):
+        if num != i + 1:
+            errors.append(f"Нарушена нумерация таблиц: {num} вместо {i + 1}")
+            break
 
-    seen = []
-    for r in refs:
-        if r not in seen:
-            seen.append(r)
+    for tbl in data['tables_bboxes']:
+        bottom_y = tbl['bbox'][3]
+        limit = tbl['page_height'] - (config.MARGIN_BOTTOM * config.POINTS_PER_MM)
 
-    for i in range(1, len(seen)):
-        if seen[i] < seen[i - 1]:
-            errors.append(f"Ссылка [{seen[i]}] идет после [{seen[i - 1]}]: нарушен порядок")
-
-    return errors
-
-
-def check_tables(data):
-    errors = []
-    text = data['text']
-
-    tbls = parser.find_tables(text)
-    tbl_objs = data['tables']
-
-    if len(tbls) != len(tbl_objs):
-        errors.append(f"Количество подписей таблиц ({len(tbls)}) != количество таблиц ({len(tbl_objs)})")
-
-    for tbl in tbl_objs:
-        page_data = next(p for p in data['pages'] if p['num'] == tbl['page'])
-        page_h = page_data['height']
-        bbox = tbl['bbox']
-
-        if bbox[3] > page_h - (config.MARGIN_BOTTOM * config.MM):
+        if bottom_y > limit + 5:
             errors.append(f"Стр {tbl['page']}: таблица выходит за нижнее поле")
 
     return errors
@@ -97,64 +87,27 @@ def check_tables(data):
 
 def check_lists(data):
     errors = []
-
     for page in data['pages']:
+        if not page.get('text'):
+            continue
         lines = page['text'].split('\n')
-
-        for i, line in enumerate(lines):
+        for line in lines:
             stripped = line.strip()
-
             if not stripped:
                 continue
 
             for marker in config.LIST_MARKERS:
                 if stripped.startswith(marker):
                     if len(stripped) > 1 and stripped[len(marker)] != ' ':
-                        errors.append(f"Стр {page['num']}: нет пробела после маркера списка '{marker}'")
-                    break
-
-    return errors
-
-
-def check_indent(data):
-    errors = []
-    paras = parser.get_paragraphs(data)
-
-    if not paras:
-        return errors
-
-    indents = [p['indent'] for p in paras]
-    min_indent = min(indents) if indents else 0
-
-    target_indent = config.INDENT * 10 * config.MM
-
-    for p in paras:
-        if len(p['text']) < 60:
-            continue
-
-        if not p['text'][0].isupper():
-            continue
-
-        current_indent = p['indent'] - min_indent
-
-        if abs(current_indent) < 2:
-            continue
-
-        if abs(current_indent - target_indent) > 5 * config.MM:
-            errors.append(
-                f"Стр {p['page']}: абзацный отступ {current_indent / config.MM:.2f}мм (норма {config.INDENT * 10:.1f}мм)")
-
+                        errors.append(f"Стр {page['num']}: нет пробела после маркера '{marker}'")
     return errors
 
 
 def run_all(data):
-    results = {
+    return {
         'margins': check_margins(data),
-        'figures': check_figures(data),
+        'figures': check_figures_numbering(data),
         'fig_refs': check_fig_refs(data),
-        'ref_order': check_ref_order(data),
-        'tables': check_tables(data),
-        'lists': check_lists(data),
-        'indent': check_indent(data)
+        'tables': check_tables_layout(data),
+        'lists': check_lists(data)
     }
-    return results

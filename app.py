@@ -1,40 +1,32 @@
-import os
-import shutil
-import uuid
+import io
+import uvicorn
+import pdfplumber
 from fastapi import FastAPI, UploadFile, File, Request
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import parser
 import checker
 
-app = FastAPI(title="PDF Normocontrol Checker")
-
+app = FastAPI()
 templates = Jinja2Templates(directory="templates")
-
-os.makedirs("temp_uploads", exist_ok=True)
 
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    """Отображает главную страницу"""
     return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.post("/analyze")
 async def analyze_file(file: UploadFile = File(...)):
-    """Принимает файл, сохраняет, проверяет и возвращает результат"""
-
-    unique_filename = f"{uuid.uuid4()}_{file.filename}"
-    file_path = os.path.join("temp_uploads", unique_filename)
+    if not file.filename.endswith('.pdf'):
+        return {"status": "error", "message": "Invalid file type"}
 
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        file_bytes = await file.read()
 
-        try:
-            data = parser.load(file_path)
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            data = parser.extract_data(pdf)
             results = checker.run_all(data)
 
             total_errors = sum(len(errs) for errs in results.values())
@@ -46,15 +38,9 @@ async def analyze_file(file: UploadFile = File(...)):
                 "details": results
             }
 
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
-
-    finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
