@@ -1,15 +1,20 @@
 import config
 import parser
 
+import config
+
 
 def check_margins(data):
     errors = []
+    RELAXED_TOLERANCE = config.TOLERANCE_MM + 2.0
+
     for page in data['pages']:
         words = page['words']
         if not words: continue
 
         page_h = page['height']
-        content_words = [w for w in words if 0.05 * page_h < w['top'] < 0.95 * page_h]
+
+        content_words = [w for w in words if 0.10 * page_h < w['top'] < 0.90 * page_h]
         if not content_words: continue
 
         min_x = min(w['x0'] for w in content_words)
@@ -22,14 +27,22 @@ def check_margins(data):
         top_mm = min_y / config.POINTS_PER_MM
         bottom_mm = (page['height'] - max_y) / config.POINTS_PER_MM
 
-        if abs(left_mm - config.MARGIN_LEFT) > config.TOLERANCE_MM:
-            errors.append(f"Стр {page['num']}: левое поле {left_mm:.1f}мм")
-        if abs(right_mm - config.MARGIN_RIGHT) > config.TOLERANCE_MM:
-            errors.append(f"Стр {page['num']}: правое поле {right_mm:.1f}мм")
-        if top_mm < config.MARGIN_TOP - config.TOLERANCE_MM:
-            errors.append(f"Стр {page['num']}: верхнее поле {top_mm:.1f}мм")
-        if bottom_mm < config.MARGIN_BOTTOM - config.TOLERANCE_MM:
-            errors.append(f"Стр {page['num']}: нижнее поле {bottom_mm:.1f}мм")
+        if left_mm < config.MARGIN_LEFT - RELAXED_TOLERANCE:
+            errors.append(
+                f"Стр {page['num']}: текст залезает на левое поле ({left_mm:.1f}мм, минимум {config.MARGIN_LEFT})")
+
+        if right_mm < config.MARGIN_RIGHT - RELAXED_TOLERANCE:
+            errors.append(
+                f"Стр {page['num']}: текст залезает на правое поле ({right_mm:.1f}мм, минимум {config.MARGIN_RIGHT})")
+
+        if top_mm < config.MARGIN_TOP - RELAXED_TOLERANCE:
+            errors.append(
+                f"Стр {page['num']}: текст залезает на верхнее поле ({top_mm:.1f}мм, минимум {config.MARGIN_TOP})")
+
+        if bottom_mm < config.MARGIN_BOTTOM - RELAXED_TOLERANCE:
+            errors.append(
+                f"Стр {page['num']}: текст залезает на нижнее поле ({bottom_mm:.1f}мм, минимум {config.MARGIN_BOTTOM})")
+
     return errors
 
 
@@ -103,30 +116,38 @@ def check_ref_order(data):
 
 def check_indents(data):
     errors = []
+    import config
     for page in data['pages']:
         words = page['words']
         if not words: continue
 
+        page_h = page['height']
+        # Исключаем колонтитулы для чистоты расчетов
+        content_words = [w for w in words if 0.05 * page_h < w['top'] < 0.95 * page_h]
+        if not content_words: continue
+
+        # Находим ФАКТИЧЕСКИЙ левый край текста на странице
+        base_left_pt = min(w['x0'] for w in content_words)
+
         lines = {}
-        for w in words:
+        for w in content_words:
             line_y = round(w['top'] / 4) * 4
             if line_y not in lines:
                 lines[line_y] = []
             lines[line_y].append(w)
 
-        left_margin_pt = config.MARGIN_LEFT * config.POINTS_PER_MM
-
         for line_y, line_words in lines.items():
             line_words.sort(key=lambda x: x['x0'])
             first_word = line_words[0]
 
-            shift_mm = (first_word['x0'] - left_margin_pt) / config.POINTS_PER_MM
+            # Теперь считаем сдвиг первого слова от реального края текста
+            shift_mm = (first_word['x0'] - base_left_pt) / config.POINTS_PER_MM
 
+            # Эвристика: если слово сдвинуто от 5 до 25 мм, проверяем его по ГОСТу
             if 5.0 < shift_mm < 25.0:
                 if abs(shift_mm - config.INDENT_SIZE) > config.TOLERANCE_MM:
                     errors.append(f"Стр {page['num']}: неверный абзацный отступ {shift_mm:.1f}мм (по ГОСТу {config.INDENT_SIZE}мм)")
     return errors
-
 
 def run_all(data):
     return {
