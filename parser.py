@@ -69,3 +69,11 @@ def find_tables_in_text(text):
         if len(parts) > 1 and parts[1].isdigit():
             nums.append(int(parts[1]))
     return nums
+
+
+def find_references(text):
+    matches = re.finditer(config.REF_PATTERN, text)
+    refs = []
+    for m in matches:
+        refs.append(int(m.group(1)))
+    return refs

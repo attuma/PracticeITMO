@@ -2,7 +2,6 @@ import unittest
 import checker
 import config
 
-
 class CheckerTests(unittest.TestCase):
 
     def test_check_figures_reports_numbering_gap(self):
@@ -57,6 +56,29 @@ class CheckerTests(unittest.TestCase):
 
         self.assertIn("Нарушена нумерация таблиц: 4 вместо 2", errors[0])
 
+    def test_check_ref_order_reports_wrong_order(self):
+        data = {
+            "full_text": "Текст [1], текст [3]"
+        }
+        errors = checker.check_ref_order(data)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Нарушен порядок литературы: ожидалась ссылка [2], но встретилась [3]", errors[0])
+
+    def test_check_indents_reports_wrong_indent(self):
+        data = {
+            "pages": [
+                {
+                    "num": 1,
+                    "words": [
+                        {"text": "Абзац", "top": 100, "x0": (config.MARGIN_LEFT + 20) * config.POINTS_PER_MM}
+                    ]
+                }
+            ]
+        }
+        errors = checker.check_indents(data)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("неверный абзацный отступ", errors[0])
+
     def test_run_all_returns_correct_keys(self):
         data = {
             "pages": [],
@@ -66,9 +88,8 @@ class CheckerTests(unittest.TestCase):
 
         results = checker.run_all(data)
 
-        expected_keys = {"margins", "figures", "fig_refs", "tables", "lists"}
+        expected_keys = {"margins", "figures", "fig_refs", "tables", "lists", "ref_order", "indent"}
         self.assertEqual(set(results.keys()), expected_keys)
-
 
 if __name__ == "__main__":
     unittest.main()

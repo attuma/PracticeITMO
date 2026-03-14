@@ -85,11 +85,56 @@ def check_lists(data):
     return errors
 
 
+def check_ref_order(data):
+    errors = []
+    refs = parser.find_references(data['full_text'])
+    expected_next = 1
+    seen = set()
+    for ref in refs:
+        if ref not in seen:
+            if ref != expected_next:
+                errors.append(f"Нарушен порядок литературы: ожидалась ссылка [{expected_next}], но встретилась [{ref}]")
+                expected_next = ref + 1
+            else:
+                expected_next += 1
+            seen.add(ref)
+    return errors
+
+
+def check_indents(data):
+    errors = []
+    for page in data['pages']:
+        words = page['words']
+        if not words: continue
+
+        lines = {}
+        for w in words:
+            line_y = round(w['top'] / 4) * 4
+            if line_y not in lines:
+                lines[line_y] = []
+            lines[line_y].append(w)
+
+        left_margin_pt = config.MARGIN_LEFT * config.POINTS_PER_MM
+
+        for line_y, line_words in lines.items():
+            line_words.sort(key=lambda x: x['x0'])
+            first_word = line_words[0]
+
+            shift_mm = (first_word['x0'] - left_margin_pt) / config.POINTS_PER_MM
+
+            if 5.0 < shift_mm < 25.0:
+                if abs(shift_mm - config.INDENT_SIZE) > config.TOLERANCE_MM:
+                    errors.append(f"Стр {page['num']}: неверный абзацный отступ {shift_mm:.1f}мм (по ГОСТу {config.INDENT_SIZE}мм)")
+    return errors
+
+
 def run_all(data):
     return {
         'margins': check_margins(data),
         'figures': check_figures_numbering(data),
         'fig_refs': check_fig_refs(data),
+        'ref_order': check_ref_order(data),
         'tables': check_tables_layout(data),
-        'lists': check_lists(data)
+        'lists': check_lists(data),
+        'indent': check_indents(data)
     }

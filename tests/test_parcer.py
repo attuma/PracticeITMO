@@ -22,5 +22,9 @@ class ParserTests(unittest.TestCase):
 """
         self.assertEqual(parser.find_tables_in_text(text), [1, 4])
 
+    def test_find_references_extracts_bracketed_numbers(self):
+        text = "Текст со ссылкой [1] и еще одной [5]"
+        self.assertEqual(parser.find_references(text), [1, 5])
+
 if __name__ == "__main__":
     unittest.main()
